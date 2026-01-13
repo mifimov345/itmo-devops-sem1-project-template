@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	r := mux.NewRouter()
+	r := mux.NewRouter().StrictSlash(true)
 	r.HandleFunc("/api/v0/prices", postPrices).Methods(http.MethodPost)
 	r.HandleFunc("/api/v0/prices", getPrices).Methods(http.MethodGet)
 
