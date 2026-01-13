@@ -21,7 +21,6 @@ var db *sql.DB
 
 func main() {
 	var err error
-
 	db, err = sql.Open(
 		"postgres",
 		"host=db port=5432 user=validator password=val1dat0r dbname=project-sem-1 sslmode=disable",
@@ -46,7 +45,7 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read error", 500)
+		http.Error(w, "cannot read body", 500)
 		return
 	}
 
@@ -55,15 +54,15 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	if archiveType == "tar" {
 		tr := tar.NewReader(bytes.NewReader(body))
 		for {
-			hdr, err := tr.Next()
+			h, err := tr.Next()
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
-				http.Error(w, "tar error", 400)
+				http.Error(w, "bad tar", 400)
 				return
 			}
-			if strings.HasSuffix(hdr.Name, "data.csv") {
+			if strings.HasSuffix(h.Name, "data.csv") {
 				csvData, _ = io.ReadAll(tr)
 				break
 			}
@@ -71,7 +70,7 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	} else {
 		zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 		if err != nil {
-			http.Error(w, "zip error", 400)
+			http.Error(w, "bad zip", 400)
 			return
 		}
 		for _, f := range zr.File {
@@ -87,25 +86,26 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	reader := csv.NewReader(bytes.NewReader(csvData))
 	records, _ := reader.ReadAll()
 
-	for _, rec := range records {
-		id, _ := strconv.Atoi(rec[0])
-		price, _ := strconv.Atoi(rec[4])
-
+	for _, r := range records {
+		id, _ := strconv.Atoi(r[0])
+		price, _ := strconv.Atoi(r[4])
 		db.Exec(
 			"INSERT INTO prices VALUES ($1,$2,$3,$4,$5)",
-			id, rec[1], rec[2], rec[3], price,
+			id, r[1], r[2], r[3], price,
 		)
 	}
 
-	var totalCount, totalPrice int
+	var totalItems, totalCategories, totalPrice int
 	db.QueryRow(`
-		SELECT COUNT(*), COALESCE(SUM(price),0)
+		SELECT COUNT(*),
+		       COUNT(DISTINCT category),
+		       COALESCE(SUM(price),0)
 		FROM prices
-	`).Scan(&totalCount, &totalPrice)
+	`).Scan(&totalItems, &totalCategories, &totalPrice)
 
 	resp := map[string]int{
-		"total_count":      totalCount,
-		"duplicates_count": 0,
+		"total_items":      totalItems,
+		"total_categories": totalCategories,
 		"total_price":      totalPrice,
 	}
 
@@ -125,10 +125,8 @@ func getPrices(w http.ResponseWriter, r *http.Request) {
 	writer := csv.NewWriter(buf)
 
 	for rows.Next() {
-		var id int
+		var id, price int
 		var date, name, category string
-		var price int
-
 		rows.Scan(&id, &date, &name, &category, &price)
 		writer.Write([]string{
 			strconv.Itoa(id),
