@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-docker-compose up -d db
+docker compose up -d db
 sleep 5
 
-docker-compose exec -T db psql -U validator -d project-sem-1 <<EOF
+docker compose exec -T db psql -U validator -d project-sem-1 <<EOF
 CREATE TABLE IF NOT EXISTS prices (
     id TEXT,
     created_at DATE,
