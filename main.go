@@ -135,17 +135,16 @@ func getPrices(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	buf := &bytes.Buffer{}
-	writer := csv.NewWriter(buf)
-
-	writer.Write([]string{"id", "name", "category", "price", "create_date"})
+	csvBuf := &bytes.Buffer{}
+	cw := csv.NewWriter(csvBuf)
+	cw.Write([]string{"id", "name", "category", "price", "create_date"})
 
 	for rows.Next() {
 		var id, price int
 		var name, category, date string
-
 		rows.Scan(&id, &name, &category, &price, &date)
-		writer.Write([]string{
+
+		cw.Write([]string{
 			strconv.Itoa(id),
 			name,
 			category,
@@ -153,14 +152,32 @@ func getPrices(w http.ResponseWriter, r *http.Request) {
 			date,
 		})
 	}
-	writer.Flush()
+	cw.Flush()
 
+	// ZIP
 	zipBuf := &bytes.Buffer{}
 	zw := zip.NewWriter(zipBuf)
-	f, _ := zw.Create("data.csv")
-	f.Write(buf.Bytes())
-	zw.Close()
+
+	f, err := zw.Create("data.csv")
+	if err != nil {
+		http.Error(w, "zip error", 500)
+		return
+	}
+
+	_, err = f.Write(csvBuf.Bytes())
+	if err != nil {
+		http.Error(w, "zip write error", 500)
+		return
+	}
+
+	if err := zw.Close(); err != nil {
+		http.Error(w, "zip close error", 500)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="response.zip"`)
+	w.Header().Set("Content-Length", strconv.Itoa(zipBuf.Len()))
+
 	w.Write(zipBuf.Bytes())
 }
