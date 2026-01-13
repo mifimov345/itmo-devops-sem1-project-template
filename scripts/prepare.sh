@@ -5,11 +5,12 @@ docker compose up -d db
 sleep 5
 
 docker compose exec -T db psql -U validator -d project-sem-1 <<EOF
-CREATE TABLE IF NOT EXISTS prices (
+DROP TABLE IF EXISTS prices;
+CREATE TABLE prices (
     id INTEGER,
-    created_at DATE,
     name TEXT,
     category TEXT,
-    price INTEGER
+    price INTEGER,
+    create_date DATE
 );
 EOF

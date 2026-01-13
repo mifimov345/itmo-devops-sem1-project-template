@@ -21,6 +21,7 @@ var db *sql.DB
 
 func main() {
 	var err error
+
 	db, err = sql.Open(
 		"postgres",
 		"host=db port=5432 user=validator password=val1dat0r dbname=project-sem-1 sslmode=disable",
@@ -43,16 +44,20 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 		archiveType = "zip"
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "cannot read body", 500)
-		return
+	var data []byte
+
+	file, _, err := r.FormFile("file")
+	if err == nil {
+		defer file.Close()
+		data, _ = io.ReadAll(file)
+	} else {
+		data, _ = io.ReadAll(r.Body)
 	}
 
 	var csvData []byte
 
 	if archiveType == "tar" {
-		tr := tar.NewReader(bytes.NewReader(body))
+		tr := tar.NewReader(bytes.NewReader(data))
 		for {
 			h, err := tr.Next()
 			if err == io.EOF {
@@ -68,7 +73,7 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
 			http.Error(w, "bad zip", 400)
 			return
@@ -86,12 +91,18 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	reader := csv.NewReader(bytes.NewReader(csvData))
 	records, _ := reader.ReadAll()
 
+	if len(records) > 0 {
+		records = records[1:]
+	}
+
 	for _, r := range records {
 		id, _ := strconv.Atoi(r[0])
-		price, _ := strconv.Atoi(r[4])
+		price, _ := strconv.Atoi(r[3])
+
 		db.Exec(
-			"INSERT INTO prices VALUES ($1,$2,$3,$4,$5)",
-			id, r[1], r[2], r[3], price,
+			`INSERT INTO prices (id, name, category, price, create_date)
+			 VALUES ($1,$2,$3,$4,$5)`,
+			id, r[1], r[2], price, r[4],
 		)
 	}
 
@@ -114,7 +125,10 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 }
 
 func getPrices(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, created_at, name, category, price FROM prices")
+	rows, err := db.Query(`
+		SELECT id, name, category, price, create_date
+		FROM prices
+	`)
 	if err != nil {
 		http.Error(w, "db error", 500)
 		return
@@ -124,16 +138,19 @@ func getPrices(w http.ResponseWriter, r *http.Request) {
 	buf := &bytes.Buffer{}
 	writer := csv.NewWriter(buf)
 
+	writer.Write([]string{"id", "name", "category", "price", "create_date"})
+
 	for rows.Next() {
 		var id, price int
-		var date, name, category string
-		rows.Scan(&id, &date, &name, &category, &price)
+		var name, category, date string
+
+		rows.Scan(&id, &name, &category, &price, &date)
 		writer.Write([]string{
 			strconv.Itoa(id),
-			date,
 			name,
 			category,
 			strconv.Itoa(price),
+			date,
 		})
 	}
 	writer.Flush()
