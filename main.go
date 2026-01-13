@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -33,7 +34,7 @@ func main() {
 	r.HandleFunc("/api/v0/prices", postPrices).Methods(http.MethodPost)
 	r.HandleFunc("/api/v0/prices", getPrices).Methods(http.MethodGet)
 
-	log.Println("HTTP server started on :8080")
+	log.Println("Server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
@@ -45,7 +46,7 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "read error", 500)
 		return
 	}
 
@@ -59,10 +60,10 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
+				http.Error(w, "tar error", 400)
 				return
 			}
-			if hdr.Name == "data.csv" {
+			if strings.HasSuffix(hdr.Name, "data.csv") {
 				csvData, _ = io.ReadAll(tr)
 				break
 			}
@@ -70,11 +71,11 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	} else {
 		zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
+			http.Error(w, "zip error", 400)
 			return
 		}
 		for _, f := range zr.File {
-			if f.Name == "data.csv" {
+			if strings.HasSuffix(f.Name, "data.csv") {
 				rc, _ := f.Open()
 				csvData, _ = io.ReadAll(rc)
 				rc.Close()
@@ -87,24 +88,24 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 	records, _ := reader.ReadAll()
 
 	for _, rec := range records {
+		id, _ := strconv.Atoi(rec[0])
 		price, _ := strconv.Atoi(rec[4])
+
 		db.Exec(
 			"INSERT INTO prices VALUES ($1,$2,$3,$4,$5)",
-			rec[0], rec[1], rec[2], rec[3], price,
+			id, rec[1], rec[2], rec[3], price,
 		)
 	}
 
-	var totalItems, totalCategories, totalPrice int
+	var totalCount, totalPrice int
 	db.QueryRow(`
-		SELECT COUNT(*),
-		       COUNT(DISTINCT category),
-		       COALESCE(SUM(price),0)
+		SELECT COUNT(*), COALESCE(SUM(price),0)
 		FROM prices
-	`).Scan(&totalItems, &totalCategories, &totalPrice)
+	`).Scan(&totalCount, &totalPrice)
 
 	resp := map[string]int{
-		"total_items":      totalItems,
-		"total_categories": totalCategories,
+		"total_count":      totalCount,
+		"duplicates_count": 0,
 		"total_price":      totalPrice,
 	}
 
@@ -115,22 +116,29 @@ func postPrices(w http.ResponseWriter, r *http.Request) {
 func getPrices(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT id, created_at, name, category, price FROM prices")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, "db error", 500)
 		return
 	}
 	defer rows.Close()
 
 	buf := &bytes.Buffer{}
-	cw := csv.NewWriter(buf)
+	writer := csv.NewWriter(buf)
 
 	for rows.Next() {
-		var id, name, category string
-		var date string
+		var id int
+		var date, name, category string
 		var price int
+
 		rows.Scan(&id, &date, &name, &category, &price)
-		cw.Write([]string{id, date, name, category, strconv.Itoa(price)})
+		writer.Write([]string{
+			strconv.Itoa(id),
+			date,
+			name,
+			category,
+			strconv.Itoa(price),
+		})
 	}
-	cw.Flush()
+	writer.Flush()
 
 	zipBuf := &bytes.Buffer{}
 	zw := zip.NewWriter(zipBuf)
