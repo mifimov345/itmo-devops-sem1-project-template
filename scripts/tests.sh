@@ -14,6 +14,7 @@ DB_NAME="project-sem-1"
 DB_USER="validator"
 DB_PASSWORD="val1dat0r"
 
+
 # Временные файлы для тестирования
 TEST_ZIP="test_data.zip"
 TEST_TAR="test_data.tar"
