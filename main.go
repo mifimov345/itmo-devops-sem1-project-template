@@ -24,7 +24,7 @@ func main() {
 
 	db, err = sql.Open(
 		"postgres",
-		"host=db port=5432 user=validator password=val1dat0r dbname=project-sem-1 sslmode=disable",
+		"host=localhost port=5432 user=validator password=val1dat0r dbname=project-sem-1 sslmode=disable",
 	)
 	if err != nil {
 		log.Fatal(err)
