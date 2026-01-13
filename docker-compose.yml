@@ -7,8 +7,6 @@ services:
       POSTGRES_USER: validator
       POSTGRES_PASSWORD: val1dat0r
       POSTGRES_DB: project-sem-1
-    ports:
-      - "5432:5432"
 
   app:
     build: .
