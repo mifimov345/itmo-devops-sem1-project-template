@@ -237,7 +237,6 @@ func parseAndValidateCSV(data []byte) ([]csvRow, error) {
 	if len(records) < 2 {
 		return nil, errors.New("no data rows")
 	}
-
 	records = records[1:]
 
 	var result []csvRow
